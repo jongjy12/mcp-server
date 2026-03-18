@@ -1,0 +1,6 @@
+node_modules/
+npm-debug.log
+.env
+postman_collection.json
+postman_environment.json
+catgworkzj.log
