@@ -15,7 +15,8 @@ const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USERNAME || "pcmadmin";
 const DB_PASSWORD = process.env.DB_PASSWORD || "c1030a8edf1d1ee2";
 const DB_NAME = process.env.DB_SCHEMA || "ppcm";
-const LOG_FILE_PATH = process.env.LOG_FILE_PATH || path.join(__dirname, "..", "..", "catgworkzj", "catgworkzj.log");
+const PROJECT_NAME = process.env.PROJECT_NAME || "catgworkzj";
+const LOG_FILE_PATH = process.env.LOG_FILE_PATH || path.join(__dirname, "..", "..", PROJECT_NAME, `${PROJECT_NAME}.log`);
 
 // 🔌 MariaDB connection
 const pool = mysql.createPool({
@@ -148,6 +149,32 @@ app.post("/tool/execute_git", (req, res) => {
     }
     res.json({ success: true, stdout, stderr });
   });
+});
+
+// 🧠 Tool: get live application log
+app.get("/tool/get_live_log", (req, res) => {
+  const { log_path, filter, lines = 200 } = req.query;
+  if (!log_path) return res.json({ success: false, error: "log_path query parameter is required" });
+
+  try {
+    if (!fs.existsSync(log_path)) {
+      return res.json({ success: false, error: `Log file not found at ${log_path}` });
+    }
+
+    const content = fs.readFileSync(log_path, "utf8");
+    const allLines = content.split("\n");
+    const recentLines = allLines.slice(-parseInt(lines, 10));
+    
+    let filteredLines = recentLines;
+    if (filter) {
+      const filterRegex = new RegExp(filter, "i"); // case-insensitive search
+      filteredLines = recentLines.filter(line => filterRegex.test(line));
+    }
+
+    res.json({ success: true, log: filteredLines });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
 });
 
 // ❤️ Health check

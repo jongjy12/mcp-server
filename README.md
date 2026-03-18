@@ -11,6 +11,7 @@ It allows you to automate complex testing and development workflows with natural
 - **OTP Automation**: Automatically retrieve One-Time Passwords from a local log file.
 - **Git Tool**: Perform Git operations on the repository.
 - **Audit Monitoring**: Check for audit trails in the database.
+- **Live Log Analysis**: Monitor and filter Spring Boot application logs.
 - **Dockerized**: Includes a `Dockerfile` for easy containerization.
 
 ## ⚙️ Local Setup
@@ -94,3 +95,6 @@ This server is designed to work with an LLM-based CLI (like Gemini CLI) to autom
 > *"Call the login API for the 'catgworkzj' project."*
 
 This will be translated into an API call to `https://localhost/catgworkzj/api/device/auth/login`.
+
+- **Monitor Logs**: *"Check the Spring Boot log at `C:\path\to\app.log` for any 'ERROR' messages."* (Using `get_live_log` tool)
+
