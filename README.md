@@ -44,13 +44,18 @@ The server is configured via environment variables. You can create a `.env` file
 - **`DB_USER`**: Your database username (default: `pcmadmin`).
 - **`DB_PASSWORD`**: Your database password (default: `c1030a8edf1d1ee2`).
 - **`DB_SCHEMA`**: The name of the database to connect to (default: `ppcm`).
-- **`LOG_FILE_PATH`**: The absolute path to the `catgworkzj.log` file for OTP automation.
+- **`PROJECT_NAME`**: The name of your target project (default: `catgworkzj`). This is used to construct API URLs and find the log file.
+- **`LOG_FILE_PATH`**: The absolute path to the log file. If not set, it defaults to `../../[PROJECT_NAME]/[PROJECT_NAME].log`.
 
 ### **4. Running the Server**
 
 1. **Start the server:**
    ```bash
    node server.js
+   ```
+   Or with a custom project name:
+   ```bash
+   PROJECT_NAME=my-new-project node server.js
    ```
 
 2. **Verify it's running:**
@@ -70,21 +75,22 @@ Alternatively, you can run the server in a Docker container.
    ```
 
 2. **Run the container:**
-   Make sure to provide the necessary environment variables, especially the correct `DB_HOST` (use `host.docker.internal` for local databases) and `LOG_FILE_PATH`.
+   Make sure to provide the necessary environment variables.
    ```bash
-   docker run -p 3000:3000 
-     -e DB_HOST=host.docker.internal 
-     -e DB_SCHEMA=ppcm 
-     -e LOG_FILE_PATH=/path/to/your/catgworkzj.log 
-     -v /path/to/your/logs:/path/in/container 
+   docker run -p 3000:3000 \
+     -e PROJECT_NAME=my-new-project \
+     -e DB_HOST=host.docker.internal \
+     -e DB_SCHEMA=ppcm \
+     -v /path/to/your/project/logs:/path/in/container \
      mcp-server
    ```
    *(Note: You need to mount the log file directory into the container using the `-v` flag).*
 
 ## 🤖 Automated Testing
 
-This server is designed to work with an LLM-based CLI (like Gemini CLI) to automate workflows. You can now use natural language to:
+This server is designed to work with an LLM-based CLI (like Gemini CLI) to automate workflows. The `call_api` tool requires you to construct the full URL, including the project name.
 
-- **Login and Test**: *"Perform automated login and test factory for fid: [some_id]"*
-- **Check Git**: *"What is the current git status?"*
-- **Verify Audits**: *"Check the latest audit trails."*
+**Example Prompt**:
+> *"Call the login API for the 'catgworkzj' project."*
+
+This will be translated into an API call to `https://localhost/catgworkzj/api/device/auth/login`.
