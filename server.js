@@ -6,6 +6,7 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const { exec } = require("child_process");
+const yaml = require("js-yaml");
 
 const app = express();
 app.use(bodyParser.json());
@@ -177,14 +178,43 @@ app.get("/tool/get_live_log", (req, res) => {
   }
 });
 
+// 🧠 Tool: read application properties (YAML)
+app.get("/tool/read_properties", (req, res) => {
+  const { file_path } = req.query;
+  if (!file_path) return res.json({ success: false, error: "file_path query parameter is required" });
+
+  try {
+    const resolvedPath = path.isAbsolute(file_path) ? file_path : path.resolve(__dirname, file_path);
+    if (!fs.existsSync(resolvedPath)) {
+      return res.json({ success: false, error: `Properties file not found at ${resolvedPath}` });
+    }
+
+    const fileContents = fs.readFileSync(resolvedPath, "utf8");
+    const data = yaml.load(fileContents);
+    res.json({ success: true, properties: data });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+app.get("/tools", (req, res) => {
+  res.json({
+    tools: [
+      { name: "execute_sql", description: "Execute SQL query on MariaDB" },
+      { name: "call_api", description: "Call external API" },
+      { name: "get_latest_otp", description: "Fetch latest OTP from log file" },
+      { name: "get_schema", description: "Get table schema" },
+      { name: "get_latest_audit", description: "Get latest audit records" },
+      { name: "execute_git", description: "Run safe git command" },
+      { name: "get_live_log", description: "Tail log file" },
+      { name: "read_properties", description: "Read Spring Boot application properties (YAML)" }
+    ]
+  });
+});
+
 // ❤️ Health check
 app.get("/", (req, res) => {
   res.send("MCP Server is running 🚀");
-});
-
-app.listen(3000, () => {
-  console.log("MCP Server running on http://localhost:3000");
-  console.log(`Watching logs at: ${LOG_FILE_PATH}`);
 });
 
 app.listen(3000, () => {

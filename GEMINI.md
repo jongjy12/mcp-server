@@ -17,6 +17,8 @@ When asked to "Perform automated login and test factory", follow these steps:
 - **`POST /tool/execute_sql`**: Execute SQL queries.
 - **`POST /tool/call_api`**: Make HTTP requests to the web service.
 - **`GET /tool/get_latest_otp`**: Automatically grab the latest OTP from `catgworkzj.log`.
+- **`GET /tool/get_live_log?log_path=<path_to_log>&filter=<keyword>&lines=<number>`**: Reads and filters lines from a specified log file. The `log_path` parameter allows for dynamic log file locations, so you can point it to any Spring Boot log file.
+- **`POST /tool/execute_git`**: Execute Git commands.
 
 ## 📝 Configuration
 
