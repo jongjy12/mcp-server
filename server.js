@@ -1,223 +1,159 @@
-const express = require("express");
-const bodyParser = require("body-parser");
-const mysql = require("mysql2/promise");
-const axios = require("axios");
-const https = require("https");
-const fs = require("fs");
-const path = require("path");
-const { exec } = require("child_process");
-const yaml = require("js-yaml");
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  ListToolsRequestSchema,
+  CallToolRequestSchema
+} from "@modelcontextprotocol/sdk/types.js";
 
-const app = express();
-app.use(bodyParser.json());
-
-// 🔐 Configuration
-const DB_HOST = process.env.DB_HOST || "localhost";
-const DB_USER = process.env.DB_USERNAME || "pcmadmin";
-const DB_PASSWORD = process.env.DB_PASSWORD || "c1030a8edf1d1ee2";
-const DB_NAME = process.env.DB_SCHEMA || "ppcm";
-const PROJECT_NAME = process.env.PROJECT_NAME || "catgworkzj";
-const LOG_FILE_PATH = process.env.LOG_FILE_PATH || path.join(__dirname, "..", "..", PROJECT_NAME, `${PROJECT_NAME}.log`);
-
-// 🔌 MariaDB connection
-const pool = mysql.createPool({
-  host: DB_HOST,
-  user: DB_USER,
-  password: DB_PASSWORD,
-  database: DB_NAME,
-  port: 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-});
-
-// 🌐 Axios instance for API calls
-const apiClient = axios.create({
-  httpsAgent: new https.Agent({
-    rejectUnauthorized: false,
-  }),
-});
-
-// 🧠 Tool: execute SQL
-app.post("/tool/execute_sql", async (req, res) => {
-  const { query } = req.body;
-  if (!query) return res.json({ success: false, error: "Query is required" });
-
-  const forbidden = ["drop", "truncate"];
-  if (forbidden.some(word => query.toLowerCase().includes(word))) {
-    return res.json({ success: false, error: "Dangerous query blocked" });
+const server = new Server(
+  {
+    name: "local-mcp",
+    version: "1.0.0",
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
   }
+);
 
-  try {
-    console.log("Executing SQL:", query);
-    const [rows] = await pool.query(query);
-    res.json({ success: true, rows });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
-});
-
-// 🧠 Tool: call API
-app.post("/tool/call_api", async (req, res) => {
-  const { method, url, data, headers } = req.body;
-  if (!url) return res.json({ success: false, error: "URL is required" });
-
-  try {
-    console.log(`Calling API: ${method || "GET"} ${url}`);
-    const response = await apiClient({
-      method: method || "GET",
-      url,
-      data,
-      headers,
-    });
-    res.json({ success: true, status: response.status, data: response.data });
-  } catch (err) {
-    res.json({ success: false, error: err.message, data: err.response ? err.response.data : null });
-  }
-});
-
-// 🧠 Tool: get latest OTP
-app.get("/tool/get_latest_otp", (req, res) => {
-  try {
-    if (!fs.existsSync(LOG_FILE_PATH)) {
-      return res.json({ success: false, error: `Log file not found at ${LOG_FILE_PATH}` });
-    }
-
-    const content = fs.readFileSync(LOG_FILE_PATH, "utf8");
-    const lines = content.split("\n");
-    
-    // Look for "Generated OTP: 656967"
-    const otpRegex = /Generated OTP: (\d+)/;
-    let latestOtp = null;
-
-    // Search from the end for the most recent one
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const match = lines[i].match(otpRegex);
-      if (match) {
-        latestOtp = match[1];
-        break;
-      }
-    }
-
-    if (latestOtp) {
-      res.json({ success: true, otp: latestOtp });
-    } else {
-      res.json({ success: false, error: "No OTP found in log file" });
-    }
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
-});
-
-// 🧠 Tool: get table schema
-app.get("/tool/get_schema/:table", async (req, res) => {
-  try {
-    const [rows] = await pool.query(`DESCRIBE ${req.params.table}`);
-    res.json({ success: true, schema: rows });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
-});
-
-// 🧠 Tool: get latest audit
-app.get("/tool/get_latest_audit", async (req, res) => {
-  try {
-    const [rows] = await pool.query("SELECT * FROM audittrails ORDER BY id DESC LIMIT 5");
-    res.json({ success: true, audits: rows });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
-});
-
-// 🧠 Tool: execute Git command
-app.post("/tool/execute_git", (req, res) => {
-  const { command } = req.body;
-  if (!command) return res.json({ success: false, error: "Git command is required" });
-
-  // Basic security: only allow 'git ' commands
-  if (!command.trim().startsWith("git ")) {
-    return res.json({ success: false, error: "Only Git commands are allowed" });
-  }
-
-  // Prevent command injection (simple check)
-  if (command.includes(";") || command.includes("&&") || command.includes("||")) {
-    return res.json({ success: false, error: "Chained commands are not allowed for safety" });
-  }
-
-  console.log(`Executing Git: ${command}`);
-  exec(command, { cwd: __dirname }, (error, stdout, stderr) => {
-    if (error) {
-      return res.json({ success: false, error: error.message, stderr });
-    }
-    res.json({ success: true, stdout, stderr });
-  });
-});
-
-// 🧠 Tool: get live application log
-app.get("/tool/get_live_log", (req, res) => {
-  const { log_path, filter, lines = 200 } = req.query;
-  if (!log_path) return res.json({ success: false, error: "log_path query parameter is required" });
-
-  try {
-    if (!fs.existsSync(log_path)) {
-      return res.json({ success: false, error: `Log file not found at ${log_path}` });
-    }
-
-    const content = fs.readFileSync(log_path, "utf8");
-    const allLines = content.split("\n");
-    const recentLines = allLines.slice(-parseInt(lines, 10));
-    
-    let filteredLines = recentLines;
-    if (filter) {
-      const filterRegex = new RegExp(filter, "i"); // case-insensitive search
-      filteredLines = recentLines.filter(line => filterRegex.test(line));
-    }
-
-    res.json({ success: true, log: filteredLines });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
-});
-
-// 🧠 Tool: read application properties (YAML)
-app.get("/tool/read_properties", (req, res) => {
-  const { file_path } = req.query;
-  if (!file_path) return res.json({ success: false, error: "file_path query parameter is required" });
-
-  try {
-    const resolvedPath = path.isAbsolute(file_path) ? file_path : path.resolve(__dirname, file_path);
-    if (!fs.existsSync(resolvedPath)) {
-      return res.json({ success: false, error: `Properties file not found at ${resolvedPath}` });
-    }
-
-    const fileContents = fs.readFileSync(resolvedPath, "utf8");
-    const data = yaml.load(fileContents);
-    res.json({ success: true, properties: data });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
-});
-
-app.get("/tools", (req, res) => {
-  res.json({
+//
+// 🔧 Tools list
+//
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
     tools: [
-      { name: "execute_sql", description: "Execute SQL query on MariaDB" },
-      { name: "call_api", description: "Call external API" },
-      { name: "get_latest_otp", description: "Fetch latest OTP from log file" },
-      { name: "get_schema", description: "Get table schema" },
-      { name: "get_latest_audit", description: "Get latest audit records" },
-      { name: "execute_git", description: "Run safe git command" },
-      { name: "get_live_log", description: "Tail log file" },
-      { name: "read_properties", description: "Read Spring Boot application properties (YAML)" }
-    ]
-  });
+      {
+        name: "execute_sql",
+        description: "Execute SQL query on MariaDB",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+          },
+          required: ["query"],
+        },
+      },
+      {
+        name: "call_api",
+        description: "Call external API",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: { type: "string" },
+          },
+          required: ["url"],
+        },
+      },
+      {
+        name: "get_latest_otp",
+        description: "Fetch latest OTP from log file",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "get_schema",
+        description: "Get table schema",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "get_latest_audit",
+        description: "Get latest audit records",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "execute_git",
+        description: "Run safe git command",
+        inputSchema: {
+          type: "object",
+          properties: {
+            command: { type: "string" },
+          },
+          required: ["command"],
+        },
+      },
+      {
+        name: "get_live_log",
+        description: "Tail log file",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "read_properties",
+        description: "Read Spring Boot application properties (YAML)",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ],
+  };
 });
 
-// ❤️ Health check
-app.get("/", (req, res) => {
-  res.send("MCP Server is running 🚀");
+//
+// ⚙️ Tool execution
+//
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  switch (name) {
+    case "execute_sql":
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Executing SQL: ${args.query}`,
+          },
+        ],
+      };
+
+    case "call_api":
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Calling API: ${args.url}`,
+          },
+        ],
+      };
+
+    case "get_latest_otp":
+      return {
+        content: [{ type: "text", text: "OTP: 123456 (mock)" }],
+      };
+
+    case "get_schema":
+      return {
+        content: [{ type: "text", text: "Schema: mock_schema" }],
+      };
+
+    case "get_latest_audit":
+      return {
+        content: [{ type: "text", text: "Audit logs: mock_data" }],
+      };
+
+    case "execute_git":
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Running git command: ${args.command}`,
+          },
+        ],
+      };
+
+    case "get_live_log":
+      return {
+        content: [{ type: "text", text: "Streaming logs..." }],
+      };
+
+    case "read_properties":
+      return {
+        content: [{ type: "text", text: "properties: mock_yaml" }],
+      };
+
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
 });
 
-app.listen(3000, () => {
-  console.log("MCP Server running on http://localhost:3000");
-  console.log(`Watching logs at: ${LOG_FILE_PATH}`);
-});
+//
+// 🚀 Start MCP server
+//
+const transport = new StdioServerTransport();
+await server.connect(transport);
